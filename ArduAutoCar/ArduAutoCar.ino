@@ -2,10 +2,10 @@
 #include "nRF24L01.h"
 #include "RF24.h"
 
-const int E1 = 5;  
-const int M1 = 4;
-const int E2 = 6;  
-const int M2 = 7;
+const int E1 = 6;  
+const int M1 = 7;
+const int E2 = 5;  
+const int M2 = 4;
 
 #define trigPin 2
 #define echoPin 3
@@ -23,6 +23,9 @@ RF24Test radio(9,10);
 // Radio pipe addresses for the 2 nodes to communicate.
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 
+// Deadman's Switch
+unsigned long last_contact;
+
 void setup()
 {
   Serial.begin(9600);
@@ -31,6 +34,7 @@ void setup()
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
   radio.begin();  
+  radio.setPayloadSize(2);
   radio.openWritingPipe(pipes[1]);
   radio.openReadingPipe(1,pipes[0]);
   radio.startListening();  
@@ -38,65 +42,51 @@ void setup()
 
 void loop()
 {
-    // if there is data ready
-    if ( radio.available() )
-    {
-      byte transmission[7];
-      bool done = false;
-      while (!done)
-      {
-        // Fetch the payload, and see if this was the last one.
-        done = radio.read( &transmission, 7 );
+  // if there is data ready
+  if ( radio.available() ) {
+    byte transmission[2];
+    bool done = false;
+    
+    // Fetch the payload, and see if this was the last one.
+    radio.read( &transmission, sizeof(transmission) );
 
-        // Spew it
-        Serial.print(transmission[0]);
-        Serial.print(" ");
-        Serial.print(transmission[1]);
-        Serial.print(" ");
-        Serial.print(transmission[2]);
-        Serial.print(" ");
-        Serial.print(transmission[3]);
-        Serial.print(" ");
-        Serial.print(transmission[4]);
-        Serial.print(" ");
-        Serial.print(transmission[5]);
-        Serial.print(" ");
-        Serial.print(transmission[6]);
-        Serial.print("   ");
-        
-        byte speedValue = transmission[1];
-        byte turnValue = transmission[0];
-        
-        if (obstacle()) 
-        {
-//          speed(128);   //This will stop the motor from spinning
-          speed(speedValue, true);          
-        }
-        else
-        {
-          speed(speedValue, false);
-        }
+    // Spew it
+    Serial.print(transmission[0]);
+    Serial.print(" ");
+    Serial.print(transmission[1]);
+    Serial.print("   ");
+    
+    byte speedValue = transmission[0];
+    byte turnValue = transmission[1];
+    
+//        if (obstacle()) 
+//        {
+//          speed(speedValue, true);          
+//        }
+//        else
+//        {
+    speed(speedValue, false);
+//        }
 
-        turn(turnValue);
+    turn(turnValue);
  
-	// Delay just a little bit to let the other unit
-	// make the transition to receiver
-	delay(10);
-      }
+    // Delay just a little bit to let the other unit
+    // make the transition to receiver
+    delay(10);
 
-      // First, stop listening so we can talk
-      radio.stopListening();
+    // First, stop listening so we can talk
+    radio.stopListening();
 
-      // Send the final one back.
-      byte response = B0;
-      radio.write( &response, sizeof(response) );
+    // Send the final one back.
+    byte response = B0;
+    radio.write( &response, sizeof(response) );
 //      Serial.println("Sent response.");
 
-      // Now, resume listening so we catch the next packets.
-      radio.startListening();
-    } else 
-  {
-    //speed(128); //If there is no contact with the controller, stop the car
+    // Now, resume listening so we catch the next packets.
+    radio.startListening();
+  } else if (millis() - last_contact > 1000) {
+    speed(128, false); //If there is no contact with the controller, stop the car
+    turn(128);
   }  
 }
 
@@ -106,22 +96,15 @@ void speed(byte speedValue, bool obstacle)
          {
             int mappedVal = map(speedValue,0,126,0,255);
             //Going reverse
-            Serial.print(mappedVal);
-            Serial.print(" - ");
-            Serial.println(255-mappedVal);
-            digitalWrite(M1,LOW);        
-            analogWrite(E1, 255-mappedVal);   //PWM Speed Control
+            digitalWrite(M1,HIGH);        
+            analogWrite(E1, mappedVal);   //PWM Speed Control
             delay(10); 
          } else if (speedValue > 129 && !obstacle )
          {
             //Going forward
-//            int mappedVal = map(speedValue-128,0,255,0,255);
             int mappedVal = map(speedValue,130,255,0,255);
-            Serial.print(mappedVal);
-            Serial.print(" - ");
-            Serial.println(255-mappedVal);
-            digitalWrite(M1,HIGH);         
-            analogWrite(E1, 255-mappedVal);   //PWM Speed Control
+            digitalWrite(M1,LOW);         
+            analogWrite(E1, mappedVal);   //PWM Speed Control
             delay(10); 
          } else
          {
@@ -133,27 +116,20 @@ void speed(byte speedValue, bool obstacle)
 
 void turn(byte turnValue)
 {
-  if (turnValue < 125)
-         {
-           int mappedVal = map(turnValue,0,255,0,255);
-           //Turn righ
-           digitalWrite(M2,LOW);        
-//           analogWrite(E2, mappedVal);   //PWM Speed Control
-            analogWrite(E2, 255);
-           delay(10); 
-         } else if (turnValue > 130)
-         {
-           //Turn left
-           int mappedVal = map(turnValue-128,0,255,0,255);
-           digitalWrite(M2,HIGH);         
-//           analogWrite(E2, mappedVal);   //PWM Speed Control
-           analogWrite(E2, 0); 
-           delay(10); 
-         } else
-         {
-           digitalWrite(M2,LOW);
-           analogWrite(E2, 0); //Set turning wheels to straight.
-         }
+  if (turnValue < 125) {
+    //Turn right
+    digitalWrite(M2,LOW);
+    analogWrite(E2, 255);
+    delay(10); 
+  } else if (turnValue > 130) {
+    //Turn left
+    digitalWrite(M2,HIGH);         
+    analogWrite(E2, 0); 
+    delay(10); 
+  } else {
+    digitalWrite(M2,LOW);
+    analogWrite(E2, 0); //Set turning wheels to straight.
+  }
 }
 
 boolean obstacle()
