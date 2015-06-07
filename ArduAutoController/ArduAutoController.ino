@@ -3,19 +3,15 @@
 #include <SPI.h>
 #include "nRF24L01.h"
 #include "RF24.h"
+#include "printf.h"
 
 #define BAUDRATE 57600
 
-const int led_pin = 13;
+const int led_pin = 8;
 
 ArduinoNunchuk nunchuk = ArduinoNunchuk();
 
-class RF24Test: public RF24
-{
-public: RF24Test(int a, int b): RF24(a,b) {}
-};
-
-RF24Test radio(9,10);
+RF24 radio(9,10);
 
 // Radio pipe addresses for the 2 nodes to communicate.
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
@@ -23,9 +19,11 @@ const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 void setup()
 {
   Serial.begin(BAUDRATE);
+  printf_begin();
   pinMode(led_pin, OUTPUT);
   nunchuk.init();
   radio.begin();
+  radio.setChannel(112);
   radio.setPayloadSize(2);  
   radio.openWritingPipe(pipes[0]);
   radio.openReadingPipe(1,pipes[1]);  
@@ -36,31 +34,28 @@ void loop()
 {
   nunchuk.update();
   
-//  byte analogX = nunchuk.analogX;
-//  byte analogY = nunchuk.analogY;
-//  byte zButton = nunchuk.zButton;
-//  byte cButton = nunchuk.cButton;
-  
   byte car_data[2];
   car_data[0] = nunchuk.analogX;
   car_data[1] = nunchuk.analogY;
-//  car_data[2] = zButton;
-//  car_data[3] = cButton;
   
   Serial.print(car_data[0], DEC);
   Serial.print(" ");
   Serial.print(car_data[1], DEC);
   Serial.print("   ");
-//  Serial.print(car_data[2], DEC);
-//  Serial.print(' ');
-//  Serial.print(car_data[3], DEC);
   
   radio.stopListening();
-  radio.write( &car_data, 2 );
+  bool sent;
+  sent = radio.write( &car_data, 2 );
+  if(sent) {
+    Serial.print(" sent ");
+  } else {
+    Serial.print(" FAIL ");
+  }
+  
   // Now, continue listening
   radio.startListening();
 
-  // Wait here until we get a response, or timeout (250ms)
+  // Wait here until we get a response, or timeout (200ms)
   unsigned long started_waiting_at = millis();
   bool timeout = false;
   while ( ! radio.available() && ! timeout ) {
@@ -77,11 +72,14 @@ void loop()
   else
   {
     // Grab the response, compare, and send to debugging spew
-    byte response;
+    byte response[2];
     radio.read( &response, sizeof(response) );
-    Serial.println(response,BIN);
+    Serial.print(response[0], DEC);
+    Serial.print(" ");
+    Serial.print(response[1], DEC);
+    Serial.print("   ");
     
-    if (response == B0) 
+    if (response[0] == car_data[0] && response[1] == car_data[1]) 
     {
       digitalWrite(led_pin,HIGH);
       Serial.println("Ok");
@@ -89,10 +87,10 @@ void loop()
     else
     {
       digitalWrite(led_pin,LOW);
-      Serial.println("No connection");
+      Serial.println("Error?");
     }
   }
-  // Try again  later
-  delay(150);  
+  // Try again later
+  delay(100);  
   digitalWrite(led_pin,LOW);
 }
