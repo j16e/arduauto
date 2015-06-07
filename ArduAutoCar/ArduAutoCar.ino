@@ -26,6 +26,8 @@ const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 // Deadman's Switch
 unsigned long last_contact;
 
+byte currentSpeed = 0;
+
 void setup()
 {
   Serial.begin(57600);
@@ -124,6 +126,12 @@ void speed(byte speedValue, bool obstacle)
 {
   if ((int)speedValue < 127) {
     //int mappedVal = map((int)speedValue,0,126,127,191);
+    if (currentSpeed > 129) {
+      // direction change! protect the motors
+      digitalWrite(drive_ib, LOW);
+      analogWrite(drive_ia, 0);
+      delay(100);
+    }
     // reverse
     digitalWrite(drive_ib, HIGH);
     analogWrite(drive_ia, 0);
@@ -131,6 +139,12 @@ void speed(byte speedValue, bool obstacle)
     //drive.setSpeed(mappedVal);
   } else if ((int)speedValue > 129 && !obstacle ) {
     //int mappedVal = map((int)speedValue,130,255,63,127);
+    if (currentSpeed < 127) {
+      // direction change! protect the motors
+      digitalWrite(drive_ib, LOW);
+      analogWrite(drive_ia, 0);
+      delay(100);
+    }
     // forward
     digitalWrite(drive_ib, LOW);
     analogWrite(drive_ia, 255);
@@ -143,6 +157,7 @@ void speed(byte speedValue, bool obstacle)
     //drive.run(RELEASE);
     //drive.setSpeed(0);
   }
+  currentSpeed = speedValue;
 }
 
 void turn(byte turnValue)
