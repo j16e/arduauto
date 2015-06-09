@@ -26,6 +26,10 @@ const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 // Deadman's Switch
 unsigned long last_contact;
 
+// Software reset function
+void(* resetFunc) (void) = 0; //declare reset function @ address 0
+
+// track current speed so we can transition direction safely
 byte currentSpeed = 0;
 
 void setup()
@@ -112,7 +116,10 @@ void loop()
     // Now, resume listening so we catch the next packets.
     radio.startListening();
     last_contact = millis();
-  } else if (millis() - last_contact > 1000) {
+  } else if (millis() - last_contact > 3000) {
+    Serial.println("No contact for 3 seconds, resetting...");
+    resetFunc();
+  } else if (millis() - last_contact > 200) {
     Serial.println("No contact");
     speed(128, false); //If there is no contact with the controller, stop the car
     turn(128);
